@@ -1,0 +1,132 @@
+using System;
+using System.Collections.Generic;
+
+namespace VBEditor
+{
+    public class BashSyntaxHighlighter : IntfSyntaxHighlighter
+    {
+        // ========== BASH COMMENTS ==========
+
+        public bool IsLineCommentPrefix(string word)
+        {
+            return lineCommentPrefixes.Contains(word);
+        }
+
+        private readonly HashSet<string> lineCommentPrefixes = new HashSet<string>
+        {
+            "#"
+        };
+
+        public bool IsBlockCommentPrefix(string word)
+        {
+            // Bash にブロックコメントは存在しない
+            return false;
+        }
+
+        public bool IsBlockCommentSuffix(string word)
+        {
+            return false;
+        }
+
+        private readonly Dictionary<string, string> blockCommentPairs =
+            new Dictionary<string, string>();
+
+        // ========== BASH KEYWORDS ==========
+
+        public bool IsKeyword(string word)
+        {
+            return keywords.Contains(word);
+        }
+
+        private readonly HashSet<string> keywords = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "if", "then", "else", "elif", "fi",
+            "for", "in", "do", "done",
+            "while", "until",
+            "case", "esac",
+            "function",
+            "select",
+            "time",
+            "coproc"
+        };
+
+        // ========== BASH BUILT-IN TYPES (実質コマンド/予約語) ==========
+
+        public bool IsBuiltInType(string word)
+        {
+            return typeNames.Contains(word);
+        }
+
+        private readonly HashSet<string> typeNames = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "int", "float", "string", "array", "map"
+        };
+
+        // ========== BASH DECLARATION KEYWORDS ==========
+
+        public bool IsTypeDeclarationKeyword(string word)
+        {
+            return typeDeclarationKeywords.Contains(word);
+        }
+
+        private readonly HashSet<string> typeDeclarationKeywords = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "function"
+        };
+
+        // ========== BASH TYPE USAGE KEYWORDS ==========
+
+        public bool IsTypeUsageKeyword(string word)
+        {
+            return typeUsageKeywords.Contains(word);
+        }
+
+        private readonly HashSet<string> typeUsageKeywords = new HashSet<string>(StringComparer.Ordinal)
+        {
+            #region Bash has no explicit type usage keywords
+        };
+
+        // ========== BASH OPERATORS ==========
+
+        public bool IsOperator(char c)
+        {
+            return operators.Contains(c);
+        }
+
+        private readonly HashSet<char> operators = new HashSet<char>
+        {
+            '+', '-', '*', '/', '%',
+            '=', '<', '>', '!',
+            '&', '|', '^', '~',
+            '?', ':'
+        };
+
+        // ========== BASH COMPOUND OPERATORS ==========
+
+        public bool IsCompoundOperator(string word)
+        {
+            return compoundOperators.Contains(word);
+        }
+
+        private readonly HashSet<string> compoundOperators = new HashSet<string>
+        {
+            "==", "!=", "<=", ">=",
+            "&&", "||",
+            "+=", "-=", "*=", "/=", "%=",
+            ">>", "<<",
+            "=~"
+        };
+
+        // ========== BASH Parenthesis ==========
+
+        public bool IsParenthesis(char c)
+        {
+            return parentheses.Contains(c);
+        }
+
+        private readonly HashSet<char> parentheses = new HashSet<char>
+        {
+            '(', ')', '{', '}', '[', ']'
+        };
+    }
+}

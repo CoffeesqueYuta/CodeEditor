@@ -1,0 +1,1001 @@
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.IO;
+
+class MainForm : Form
+{
+    private RichTextBox editor;
+    private RichTextBox lineNumbers;
+    private Panel editorPanel;
+    private ToolStripContainer toolStripContainer;
+
+    private Timer highlightTimer;
+
+    private bool highlighting;
+    private bool  updatingLineNumbers;
+
+    private string previousText;
+    private string currentFile = null;
+
+    private const int WM_SETREDRAW = 0x000B;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    
+    // ========== COLORS ==========
+
+    private readonly Color NormalColor = Color.Magenta;
+    private readonly Color CommentColor = Color.Lime;
+    private readonly Color KeywordColor = Color.Cyan;
+    private readonly Color TypeNameColor = Color.DarkCyan;
+    private readonly Color IdentifierColor = Color.Silver;
+    private readonly Color ParenthesisColor = Color.Yellow;
+    private readonly Color OperatorColor = Color.White;
+    private readonly Color StringColor = Color.Coral;
+    private readonly Color BackgroundColor = Color.FromArgb(34, 34, 34);
+
+    // ========== VB KEYWORDS ==========
+
+    private readonly HashSet<string> keywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "AddHandler", "AddressOf", "Alias", "And", "AndAlso", "As", 
+        "ByRef", "ByVal",
+        "Call", "Case", "Catch", "Class", "Const", "Continue", 
+        "Declare", "Default", "Delegate", "Dim", "Do", 
+        "Each", "Else", "ElseIf", "End", "Enum", "Erase", "Error", "Event", "Exit", 
+        "False", "Finally", "For", "Friend", "Function",
+        "Get", "GetType", 
+        "Global", "GoSub", "GoTo",
+        "Handles", 
+        "If", "Implements", "Imports", "In", "Inherits", "Interface", "Is", "IsNot",
+        "Let", "Lib", "Like", "Long", "Loop",
+        "Me", "Mod", "Module", "MustInherit", "MustOverride", "MyBase", "MyClass",
+        "Namespace", "New", "Next", "Not", "Nothing", "NotInheritable", "NotOverridable",
+        "Of", "On", "Operator", "Option", "Optional", "Or", "OrElse", "Overloads", "Overridable", "Overrides",
+        "ParamArray", "Partial", "Private", "Property", "Protected", "Public",
+        "RaiseEvent", "ReadOnly", "ReDim", "REM", "RemoveHandler", "Resume", "Return",
+        "Select", "Set", "Shadows", "Shared", "Static", "Step", "Stop", "Sub", "SyncLock",
+        "Then", "Throw", "To", "True", "Try", "TryCast", "TypeOf", 
+        "Using", 
+        "While", "With", "WithEvents", "WriteOnly",
+        "Xor",
+        "Yield"
+    };
+
+    // ========== VB TYPE NAMES ==========
+
+    private readonly HashSet<string> typeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Boolean", "Byte", "SByte", "Short", "UShort", 
+        "Integer", "UInteger", "Long", "ULong", "Decimal", "Single", "Double", 
+        "String", "Char",
+        "Date", "Object", "Variant"
+    };
+
+    // ========== VB DECLARATION KEYWORDS ==========
+
+    private readonly HashSet<string> typeDeclarationKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Class", "Module", "Structure", "Interface", "Enum", "Delegate"
+    };
+
+    // ========== CONSTRUCTOR ==========
+
+    public MainForm()
+    {
+        Text = "VB Editor";
+        Width = 1000;
+        Height = 700;
+        StartPosition = FormStartPosition.CenterScreen;
+
+        // LINE NUMBER PANE
+
+        lineNumbers = new RichTextBox();
+        lineNumbers.Dock = DockStyle.Left;
+        lineNumbers.Width = 55;
+        lineNumbers.ReadOnly = true;
+        lineNumbers.TabStop = false;
+        lineNumbers.WordWrap = false;
+        lineNumbers.ScrollBars = RichTextBoxScrollBars.None;
+        lineNumbers.Font = new Font("Consolas", 11);
+        lineNumbers.BackColor = Color.FromArgb(30, 30, 30);
+        lineNumbers.ForeColor = Color.Gray;
+        lineNumbers.BorderStyle = BorderStyle.None;
+
+        // MAIN EDITOR PANEL
+
+        editor = new RichTextBox();
+        editor.Dock = DockStyle.Fill;
+        editor.Font = new Font("Consolas", 11);
+        editor.AcceptsTab = true;
+        editor.WordWrap = false;
+        editor.BackColor = BackgroundColor;
+        editor.ForeColor = NormalColor;
+        editor.BorderStyle = BorderStyle.None;
+        editor.HideSelection = false;
+        editor.DetectUrls = false;
+
+        // HIGHLIGHT TIMER
+
+        highlightTimer = new Timer();
+        highlightTimer.Interval = 80;
+        highlightTimer.Tick += HighlightTimer_Tick;
+
+        // EVENTS
+
+        editor.TextChanged += Editor_TextChanged;
+        editor.VScroll += Editor_VScroll;
+        editor.Resize += Editor_Resize;
+        editor.KeyDown += Editor_KeyDown;
+
+        // TOOL STRIP CONTAINER
+
+        toolStripContainer = new ToolStripContainer();
+        toolStripContainer.Dock = DockStyle.Fill;
+        toolStripContainer.BackColor = BackgroundColor;
+        toolStripContainer.TopToolStripPanel.BackColor = SystemColors.Control;
+        Controls.Add(toolStripContainer);
+
+        // EDITOR PANEL
+
+        editorPanel = new Panel();
+        editorPanel.Dock = DockStyle.Fill;
+        editorPanel.BackColor = BackgroundColor;
+        editorPanel.Padding = new Padding(0, 4, 0, 0);
+        editorPanel.Controls.Add(editor);
+        editorPanel.Controls.Add(lineNumbers);
+        toolStripContainer.ContentPanel.Controls.Add(editorPanel);
+
+        // MENU
+
+        CreateMenu();
+        previousText = editor.Text;
+        UpdateLineNumbers();
+    }
+
+    // ========== MENU ==========
+
+    private void CreateMenu()
+    {
+        MenuStrip menu = new MenuStrip();
+
+        // FILE MENU
+
+        ToolStripMenuItem file = new ToolStripMenuItem("File");
+        ToolStripMenuItem newFile = new ToolStripMenuItem("New");
+        ToolStripMenuItem open = new ToolStripMenuItem("Open");
+        ToolStripMenuItem save = new ToolStripMenuItem("Save");
+        ToolStripMenuItem saveAs = new ToolStripMenuItem("Save As");
+        ToolStripMenuItem exit = new ToolStripMenuItem("Exit");
+
+        newFile.Click += delegate { NewFile(); };
+        open.Click += delegate { OpenFile(); };
+        save.Click += delegate { SaveFile(); };
+        saveAs.Click += delegate { SaveFileAs(); };
+        exit.Click += delegate { Close(); };
+        file.DropDownItems.Add(newFile);
+        file.DropDownItems.Add(open);
+        file.DropDownItems.Add(save);
+        file.DropDownItems.Add(saveAs);
+        file.DropDownItems.Add(new ToolStripSeparator());
+        file.DropDownItems.Add(exit);
+
+        // EDIT MENU
+
+        ToolStripMenuItem edit = new ToolStripMenuItem("Edit");
+        ToolStripMenuItem undo = new ToolStripMenuItem("Undo");
+        ToolStripMenuItem redo = new ToolStripMenuItem("Redo");
+        ToolStripMenuItem cut = new ToolStripMenuItem("Cut");
+        ToolStripMenuItem copy = new ToolStripMenuItem("Copy");
+        ToolStripMenuItem paste = new ToolStripMenuItem("Paste");
+        ToolStripMenuItem selectAll = new ToolStripMenuItem("Select All");
+        ToolStripMenuItem find = new ToolStripMenuItem("Find");
+        undo.Click += delegate { if (editor.CanUndo) editor.Undo(); };
+        redo.Click += delegate { if (editor.CanRedo) editor.Redo(); };
+        cut.Click += delegate { editor.Cut(); };
+        copy.Click += delegate { editor.Copy(); };
+        paste.Click += delegate { editor.Paste(); };
+        selectAll.Click += delegate { editor.SelectAll(); };
+        find.Click += delegate { FindText(); };
+        edit.DropDownItems.Add(undo);
+        edit.DropDownItems.Add(redo);
+        edit.DropDownItems.Add(new ToolStripSeparator());
+        edit.DropDownItems.Add(cut);
+        edit.DropDownItems.Add(copy);
+        edit.DropDownItems.Add(paste);
+        edit.DropDownItems.Add(new ToolStripSeparator());
+        edit.DropDownItems.Add(selectAll);
+        edit.DropDownItems.Add(find);
+        menu.Items.Add(file);
+        menu.Items.Add(edit);
+        MainMenuStrip = menu;
+        menu.Dock = DockStyle.None;
+        toolStripContainer.TopToolStripPanel.Controls.Add(menu);
+    }
+
+    // ========== KEYWORD SHORTCUTS ==========
+
+    private void Editor_KeyDown(object sender, KeyEventArgs e)
+    {
+        // CTRL + Z
+        if (e.Control && e.KeyCode == Keys.Z)
+        {
+            if (editor.CanUndo) editor.Undo();
+            e.SuppressKeyPress = true;
+            e.Handled = true;
+            return;
+        }
+
+        // CTRL + Y
+        if (e.Control && e.KeyCode == Keys.Y)
+        {
+            if (editor.CanRedo) editor.Redo();
+            e.SuppressKeyPress = true;
+            e.Handled = true;
+            return;
+        }
+
+        // TAB
+        if (e.KeyCode == Keys.Tab)
+        {
+            if (editor.SelectionLength > 0)
+            {
+                if (e.Shift)
+                {
+                    UnindentSelectedLines();
+                }
+                else
+                {
+                    IndentSelectedLines();
+                }
+                e.SuppressKeyPress = true;
+                e.Handled = true;
+                return;
+            }
+            if (e.Shift)
+            {
+                UnindentSelectedLines();
+                e.SuppressKeyPress = true;
+                e.Handled = true;
+                return;
+            }
+        }
+    }
+
+    // ========== INDENT SELECTED LINES ==========
+
+    private void IndentSelectedLines()
+    {
+        int selectionStart = editor.SelectionStart;
+        int selectionLength = editor.SelectionLength;
+
+        string text = editor.Text;
+        int firstLine = GetLineFromPosition(text, selectionStart);
+        int lastPosition = selectionStart + selectionLength;
+        int lastLine;
+
+        if (lastPosition > 0 && lastPosition <= text.Length && lastPosition == text.Length)
+        {
+            lastLine = GetLineFromPosition(text, text.Length - 1);
+        }
+        else
+        {
+            lastLine = GetLineFromPosition(text, lastPosition);
+            if (lastLine > 0 && lastPosition < text.Length && text[lastPosition - 1] != '\n') { lastLine--; }
+        }
+        if (lastLine < firstLine) { lastLine = firstLine; }
+        int blockStart = GetLineStart(text, firstLine);
+        int blockEnd;
+        if (lastLine < CountLines(text) - 1)
+        {
+            blockEnd = GetLineStart(text, lastLine + 1);
+        }
+        else
+        {
+            blockEnd = text.Length;
+        }
+        List<string> lines = new List<string>();
+        int line;
+        for (line = firstLine; line <= lastLine; line++)
+        {
+            lines.Add(GetLine(text, line));
+        }
+        string replacement = "";
+        for (line = 0; line < lines.Count; line++)
+        {
+            replacement += "\t" + lines[line];
+            if (line < lines.Count - 1) { replacement += Environment.NewLine; }
+        }
+        editor.Select(blockStart, blockEnd - blockStart);
+        editor.SelectedText = replacement;
+        int lineCont = lastLine - firstLine + 1;
+        int newSelectionStart = selectionStart + 1;
+        int newSelectionLength = selectionLength + lineCont;
+        if (newSelectionStart > editor.TextLength) { newSelectionStart = editor.TextLength; }
+        if (newSelectionStart + newSelectionLength > editor.TextLength) { newSelectionLength = editor.TextLength - newSelectionStart; }
+        editor.Select(newSelectionStart, newSelectionLength);
+    }
+
+    // ========== UNINDENT SELECTED LINES ==========
+
+    private void UnindentSelectedLines()
+    {
+        int selectionStart = editor.SelectionStart;
+        int selectionLength = editor.SelectionLength;
+
+        string text = editor.Text;
+        int firstLine = GetLineFromPosition(text, selectionStart);
+        int lastPosition = selectionStart + selectionLength;
+        int lastLine;
+        if (lastPosition > 0 && lastPosition == text.Length)
+        {
+            lastLine = GetLineFromPosition(text, text.Length - 1);
+        }
+        else
+        {
+            lastLine = GetLineFromPosition(text, lastPosition);
+            if (lastLine > 0 && lastPosition < text.Length && text[lastPosition - 1] != '\n') { lastLine--; }
+        }
+        if (lastLine < firstLine) { lastLine = firstLine; }
+        int blockStart = GetLineStart(text, firstLine);
+        int blockEnd;
+        if (lastLine < CountLines(text) - 1)
+        {
+            blockEnd = GetLineStart(text, lastLine + 1);
+        }
+        else
+        {
+            blockEnd = text.Length;
+        }
+        List<string> lines = new List<string>();
+        int line;
+        for (line = firstLine; line <= lastLine; line++)
+        {
+            lines.Add(GetLine(text, line));
+        }
+        string replacement = "";
+        for (line = 0; line < lines.Count; line++)
+        {
+            replacement += "\t" + lines[line];
+            if (line < lines.Count - 1) { replacement += Environment.NewLine; }
+        }
+        editor.Select(blockStart, blockEnd - blockStart);
+        editor.SelectedText = replacement;
+        int lineCount = lastLine - firstLine + 1;
+        int newSelectionStart = selectionStart + 1;
+        int newSelectionLength = selectionLength + lineCount;
+        if (newSelectionLength > editor.TextLength) { newSelectionStart = editor.TextLength; }
+        if (newSelectionStart + newSelectionLength > editor.TextLength) { newSelectionLength = editor.TextLength - newSelectionStart; }
+        editor.Select(newSelectionStart, newSelectionLength);
+    }
+
+    // ========== UNINDENT CURRENT LINE ==========
+
+    private void UnindentCurrentLine()
+    {
+        int cursor = editor.SelectionStart;
+        string text = editor.Text;
+        int line = GetLineFromPosition(text, cursor);
+        int lineStart = GetLineStart(text, line);
+        int lineEnd = GetLineEnd(text, line);
+        string currentLine = text.Substring(lineStart, lineEnd - lineStart);
+        int removeCount = GetIndentCharacters(currentLine);
+        if (removeCount <= 0) return;
+        editor.Select(lineStart, removeCount);
+        editor.SelectedText = "";
+        int newCursor = cursor - Math.Min(removeCount, cursor - lineStart);
+        if (newCursor < lineStart) { newCursor = lineStart; }
+        editor.Select(newCursor, 0);
+    }
+
+    // ========== GET INDENT CHARACTERS ==========
+
+    private int GetIndentCharacters(string line)
+    {
+        if (String.IsNullOrEmpty(line)) return 0;
+        if (line[0] == '\t') return 1;
+        int spaces = 0;
+        while (spaces < line.Length && spaces < 4 && line[spaces] == ' ') { spaces++; }
+        return spaces;
+    }
+
+    // ========== GET LINE FROM POSITION ==========
+
+    private int GetLineFromPosition(string text, int position)
+    {
+        if (position < 0) position = 0;
+        if (position > text.Length) position = text.Length;
+        int line = 0;
+        int i;
+        for (i = 0; i < position; i++)
+        {
+            if (text[i] == '\n') { line++; }
+        }
+        return line;
+    }
+
+    // ========== TEXT CHANGED ==========
+
+    private void Editor_TextChanged(object sender, EventArgs e)
+    {
+        if (highlighting) return;
+        UpdateLineNumbers();
+        highlightTimer.Stop();
+        highlightTimer.Start();
+    }
+
+    // ========== HIGHLIGHT TIMER ==========
+
+    private void HighlightTimer_Tick(object sender, EventArgs e)
+    {
+        highlightTimer.Stop();
+        if (!highlighting) HighlightChangedRegion();
+    }
+
+    // ========== FIND CHANGED REGION ==========
+
+    private void HighlightChangedRegion()
+    {
+        string newText = editor.Text;
+        string oldText = previousText;
+        int prefix = 0;
+        int minimum = Math.Min(oldText.Length, newText.Length);
+        while (prefix < minimum && oldText[prefix] == newText[prefix]) { prefix++; }
+        int oldSuffix = oldText.Length - 1;
+        int newSuffix = newText.Length - 1;
+        while (oldSuffix >= prefix && newSuffix >= prefix && oldText[oldSuffix] == newText[newSuffix])
+        {
+            oldSuffix--;
+            newSuffix--;
+        }
+        int start = prefix;
+        int end = newSuffix + 1;
+        if (start > newText.Length) { start = newText.Length; }
+        if (end > newText.Length) { end = newText.Length; }
+        int startLine = GetLineFromPosition(newText, start);
+        int endLine = GetLineAtPosition(newText, end);
+        int oldStartLine = GetLineAtPosition(oldText, Math.Min(prefix, oldText.Length));
+        int oldEndLine = GetLineAtPosition(oldText, Math.Min(oldSuffix + 1, oldText.Length));
+        int firstLine = startLine;
+        int lastLine = endLine;
+        if (oldStartLine < firstLine) { firstLine = oldStartLine; }
+        if (oldEndLine > lastLine) { lastLine = oldEndLine; }
+        ExpandLogicalRange(newText, ref firstLine, ref lastLine);
+        if (newText.Length == 0) { previousText = newText; return;}
+        HighlightLines(newText, firstLine, lastLine);
+        previousText = newText;
+    }
+
+    // ========== GET LINE NUMBER AT POSITION ==========
+
+    private int GetLineAtPosition(string text, int position)
+    {
+        if (position < 0) position = 0;
+        if (position > text.Length) position = text.Length;
+        int line = 0;
+        int i;
+        for (i = 0; i < position; i++)
+        {
+            if (text[i] == '\n') { line++; }
+        }
+        return line;
+    }
+
+    // ========== EXPAND LOGICAL VB RANGE ==========
+
+    private void ExpandLogicalRange(string text, ref int firstLine, ref int lastLine)
+    {
+        int totalLines = CountLines(text);
+        if (firstLine <= 0) return;
+        if (lastLine >= totalLines) lastLine = totalLines - 1;
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            if (firstLine > 0)
+            {
+                string previous = GetLine(text, firstLine - 1);
+                if (IsContinuationLine(previous))
+                {
+                    firstLine--;
+                    changed = true;
+                }
+            }
+        }
+        changed = true;
+        while (changed)
+        {
+            changed = false;
+            if (lastLine < totalLines - 1)
+            {
+                string current = GetLine(text, lastLine);
+                if (IsContinuationLine(current))
+                {
+                    lastLine++;
+                    changed = true;
+                }
+            }
+        } 
+    }
+
+    // ========== CHECK VB CONTINUATION ==========
+
+    private bool IsContinuationLine(string line)
+    {
+        if (line == null) return false;
+        string trimmed = line.TrimEnd(' ', '\t', '\r');
+        if (trimmed.Length == 0) return false;
+        return trimmed.EndsWith("_");
+    }
+
+    // ========== COUNT LINES ==========
+
+    private int CountLines(string text)
+    {
+        if (text.Length == 0) return 1;
+        int count = 1;
+        int i;
+        for (i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '\n') { count++; }
+        }
+        return count;
+    }
+
+    // ========== GET LINE ==========
+
+    private string GetLine(string text, int lineNumber)
+    {
+        if (lineNumber < 0) return "";
+        int currentLine = 0;
+        int start = 0;
+        int i;
+        for (i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '\n')
+            {
+                if (currentLine == lineNumber) { return text.Substring(start, i - start).TrimEnd('\r'); }
+                currentLine++;
+                start = i + 1;
+            }
+        }
+        if (currentLine == lineNumber) { return text.Substring(start).TrimEnd('\r'); }
+        return "";
+    }
+
+    // ========== HIGHLIGHT SELECTED LINES ==========
+
+    private void HighlightLines(string text, int firstLine, int lastLine)
+    {
+        int start = GetLineStart(text, firstLine);
+        int end = GetLineEnd(text, lastLine);
+        if (start < 0) start = 0;
+        if (end < start) return;
+        if (end > editor.TextLength) end = editor.TextLength;
+        int cursor = editor.SelectionStart;
+        int selectionLength = editor.SelectionLength;
+        highlighting = true;
+        try {
+            SendMessage(editor.Handle, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+            editor.SuspendLayout();
+            editor.Select(start, end - start);
+            editor.SelectionColor = NormalColor;
+            editor.SelectionBackColor = BackgroundColor;
+            HighlightRange(text, start, end);
+        }
+        finally 
+        {
+            if (cursor > editor.TextLength) { cursor = editor.TextLength; }
+            if (selectionLength > editor.TextLength - cursor) { selectionLength = editor.TextLength - cursor; }
+            editor.Select(cursor, selectionLength);
+            editor.ResumeLayout();
+            SendMessage(editor.Handle, WM_SETREDRAW, new IntPtr(1), IntPtr.Zero);
+            editor.Invalidate();
+            editor.Update();
+            highlighting = false;
+        }
+    }
+
+    // ========== HIGHLIGHT RANGE ==========
+
+    private void HighlightRange(string text, int start, int end)
+    {
+        int i = start;
+        while (i < end)
+        {
+            char c = text[i];
+
+            // COMMENT
+
+            if (c == '\'')
+            {
+                int commentStart = i;
+                while (i < end && text[i] != '\n') { i++; }
+                ColorRange(commentStart, i - commentStart, CommentColor);
+                continue;
+            }
+
+            // STRING
+
+            if (c == '"')
+            {
+                int stringStart = i;
+                i++;
+                while (i < end)
+                {
+                    if (text[i] == '"')
+                    {
+                        if (i + 1 < end && text[i + 1] == '"') { i += 2; continue; }
+                        i++; break;
+                    }
+                    i++;
+                }
+                ColorRange(stringStart, i - stringStart, StringColor);
+                continue;
+            }
+
+            // IDENTIFIER / KEYWORD / TYPE
+
+            if (Char.IsLetter(c) || c == '_')
+            {
+                int wordStart = i;
+                i++;
+                while (i < end && (Char.IsLetterOrDigit(text[i]) || text[i] == '_')) { i++; }
+                string word = text.Substring(wordStart, i - wordStart);
+
+                // BUILT-IN TYPE
+                if (typeNames.Contains(word))
+                {
+                    ColorRange(wordStart, i - wordStart, TypeNameColor);
+                }
+
+                // USER TYPE AFTER AS / NEW
+                else if (IsTypeNameAfterAsOrNew(text, wordStart))
+                {
+                    ColorRange(wordStart, i - wordStart, TypeNameColor);
+                }
+
+                // USER TYPE AFTER CLASS / STRUCTURE / INTERFACE / ENUM / DELEGATE
+                else if (IsTypeNameAfterDeclarationKeyword(text, wordStart))
+                {
+                    ColorRange(wordStart, i - wordStart, TypeNameColor);
+                }
+
+                // KEYWORD
+                else if (keywords.Contains(word))
+                {
+                    ColorRange(wordStart, i - wordStart, KeywordColor);
+                }
+
+                // NORMAL IDENTIFIER
+                else
+                {
+                    ColorRange(wordStart, i - wordStart, IdentifierColor);
+                }
+                continue;
+            }
+
+            // NUMBER
+
+            if (Char.IsDigit(c))
+            {
+                i++;
+                while (i < end && (Char.IsDigit(text[i]) || text[i] == '.' || Char.ToLower(text[i]) == 'e')) { i++; }
+                continue;
+            }
+
+            // PARENTHESIS / BRACKETS
+
+            //if (c == '(' || c == ')' || c =='{' || c == '}' || c == '[' || c == ']')
+            if (c == '(' || c == ')' || c == '[' || c == ']')
+            {
+                ColorRange(i, 1, ParenthesisColor);
+                i++;
+                continue;
+            }
+
+            // OPERATORS
+
+            if (IsOperator(c))
+            {
+                int operatorStart = i;
+                i++;
+                if (i < end)
+                {
+                    char next = text[i];
+                    if ((c == '<' && (next == '=' || next == '>')) ||
+                        (c == '>' && next == '=') ||
+                        (c == '+' && next == '=') ||
+                        (c == '-' && next == '=') ||
+                        (c == '*' && next == '=') ||
+                        (c == '/' && next == '=') ||
+                        (c == '&' && next == '=') ||
+                        (c == '^' && next == '='))
+                    {
+                        i++;
+                    }
+                }
+                ColorRange(operatorStart, i - operatorStart, OperatorColor);
+                continue;
+            }
+            i++;
+        }
+    }
+
+    // ========== CHECK TYPE AFTER "AS" OR "NEW" ==========
+
+    private bool IsTypeNameAfterAsOrNew(string text, int wordStart)
+    {
+        int position = wordStart - 1;
+        while (position >= 0 && Char.IsWhiteSpace(text[position])) { position--; }
+        if (position < 0) return false;
+        int end = position + 1;
+        while (position >= 0 && (Char.IsLetterOrDigit(text[position]) || text[position] == '_')) { position--; }
+        int start = position + 1;
+        if (start >= end) return false;
+        string previousWord = text.Substring(start, end - start);
+        return previousWord.Equals("As", StringComparison.OrdinalIgnoreCase) || previousWord.Equals("New", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ========== CHECK TYPE AFTER CLASS / STRUCTURE / INTERFACE / ENUM ==========
+
+    private bool IsTypeNameAfterDeclarationKeyword(string text, int wordStart)
+    {
+        int position = wordStart - 1;
+        while (position >= 0 && Char.IsWhiteSpace(text[position])) { position--; }
+        if (position < 0) return false;
+        int end = position + 1;
+        while (position >= 0 && (Char.IsLetterOrDigit(text[position]) || text[position] == '_')) { position--; }
+        int start = position + 1;
+        if (start >= end) return false;
+        string previousWord = text.Substring(start, end - start);
+        return typeDeclarationKeywords.Contains(previousWord);
+    }
+
+    // ========== OPERATOR DETECTION ==========
+
+    private bool IsOperator(char c)
+    {
+        /*
+        return c == '+' || c == '-' || c == '*' || c == '/' || c == '=' ||
+               c == '<' || c == '>' || c == '&' || c == '|' || c == '^' ||
+               c == '%' || c == '!' || c == ':' || c == '?' || c == '~';
+        */
+        return c == '+' || c == '-' || c == '*' || c == '/' || c == '=' ||
+               c == '<' || c == '>' || c == '&' || c == '^' || c == '%';
+    }
+
+    private void ColorRange(int start, int length, Color color)
+    {
+        if (length <= 0) return;
+        if (start < 0) return;
+        if (start >= editor.TextLength) return;
+        if (start + length > editor.TextLength) { length = editor.TextLength - start; }
+        if (length <= 0) return;
+        editor.Select(start, length);
+        editor.SelectionColor = color;
+    }
+
+    // ========== LINE START ==========
+
+    private int GetLineStart(string text, int lineNumber)
+    {
+        if (lineNumber <= 0) return 0;
+        int line = 0;
+        int i;
+        for (i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '\n')
+            {
+                line++;
+                if (line == lineNumber) { return i + 1; }
+            }
+        }
+        return text.Length;
+    }
+
+    // ========== LINE END ==========
+
+    private int GetLineEnd(string text, int lineNumber)
+    {
+        int start = GetLineStart(text, lineNumber);
+        int i;
+        for (i = start; i < text.Length; i++)
+        {
+            if (text[i] == '\n') { return i; }
+        }
+        return text.Length;
+    }
+
+    // ========== LINE NUMBERS ==========
+
+    private void UpdateLineNumbers()
+    {
+        if (updatingLineNumbers) return;
+        updatingLineNumbers = true;
+        try
+        {
+            int lineCount = editor.GetLineFromCharIndex(editor.TextLength) + 1;
+            string numbers = "";
+            int i;
+            for (i = 1; i <= lineCount; i++)
+            {
+                numbers += i.ToString() + Environment.NewLine;
+            }
+            lineNumbers.Text = numbers;
+            SyncLineNumbersScroll();
+        }
+        finally
+        {
+            updatingLineNumbers = false;
+        }
+    }
+
+    // ========== SCROLL SYNCHRONIZATION ==========
+
+    private void Editor_VScroll(object sender, EventArgs e)
+    {
+        SyncLineNumbersScroll();
+    }
+
+    private void Editor_Resize(object sender, EventArgs e)
+    {
+        SyncLineNumbersScroll();
+    }
+
+    private void SyncLineNumbersScroll()
+    {
+        if (!editor.IsHandleCreated || !lineNumbers.IsHandleCreated) return;
+        int firstLine = editor.GetLineFromCharIndex(editor.GetCharIndexFromPosition(new Point(0, 0)));
+        int target = lineNumbers.GetFirstCharIndexFromLine(firstLine);
+        if (target >= 0)
+        {
+            lineNumbers.Select(target, 0);
+            lineNumbers.ScrollToCaret();
+        }
+    }
+
+    // ========== NEW FILE ==========
+
+    private void NewFile()
+    {
+        editor.Clear();
+        currentFile = null;
+        previousText = "";
+        Text = "VB Editor - New File";
+        UpdateLineNumbers();
+    }
+
+    // ========== OPEN FILE ==========
+
+    private void OpenFile()
+    {
+        OpenFileDialog dialog = new OpenFileDialog();
+        dialog.Filter = "VB Files (*.vb)|*.vb|Class Files (*.cls)|*.cls|All Files (*.*)|*.*";
+        if (dialog.ShowDialog() != DialogResult.OK) return;
+        try
+        {
+            string contents = File.ReadAllText(dialog.FileName);
+            highlighting = true;
+            editor.Text = contents;
+            highlighting = false;
+            currentFile = dialog.FileName;
+            //previousText = editor.contents;
+            previousText = editor.Text;
+            Text = "VB Editor - " + Path.GetFileName(currentFile);
+            editor.Select(0, 0);
+            UpdateLineNumbers();
+            HighlightEntireDocument();
+        }
+        catch (Exception ex)
+        {
+            highlighting = false;
+            MessageBox.Show(ex.Message, "Open Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    // ========== INITIAL FULL HIGHLIGHT ==========
+
+    private void HighlightEntireDocument()
+    {
+        if (editor.TextLength == 0) return;
+        HighlightLines(editor.Text, 0, CountLines(editor.Text) - 1);
+    }
+
+    // ========== SAVE FILE ==========
+
+    private void SaveFile()
+    {
+        if (currentFile == null)
+        {
+            SaveFileAs();
+            return;
+        }
+        try
+        {
+            File.WriteAllText(currentFile, editor.Text);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    // ========== SAVE FILE AS ==========
+
+    private void SaveFileAs()
+    {
+        SaveFileDialog dialog = new SaveFileDialog();
+        dialog.Filter = "VB Files (*.vb)|*.vb|Class Files (*.cls)|*.cls|All Files (*.*)|*.*";
+        dialog.DefaultExt = "vb";
+        if (dialog.ShowDialog() != DialogResult.OK) return;
+        try
+        {
+            File.WriteAllText(dialog.FileName, editor.Text);
+            currentFile = dialog.FileName;
+            Text = "VB Editor - " + Path.GetFileName(currentFile);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    // ========== FIND ==========
+
+    private void FindText()
+    {
+        Form findForm = new Form();
+        findForm.Text = "Find";
+        findForm.Width = 400;
+        findForm.Height = 110;
+        findForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+        findForm.StartPosition = FormStartPosition.CenterParent;
+        TextBox search = new TextBox();
+        search.Left = 10;
+        search.Top = 10;
+        search.Width = 280;
+        Button findButton = new Button();
+        findButton.Text = "Find";
+        findButton.Left = 300;
+        findButton.Top = 8;
+        findButton.Width = 70;
+        findButton.Click += delegate
+        {
+            string value = search.Text;
+            if (String.IsNullOrEmpty(value)) return;
+            int start = editor.SelectionStart + editor.SelectionLength;
+            int position = editor.Text.IndexOf(value, start, StringComparison.OrdinalIgnoreCase);
+            if (position < 0)
+            {
+                position = editor.Text.IndexOf(value, 0, StringComparison.OrdinalIgnoreCase);
+            }
+            if (position >= 0)
+            {
+                editor.Select(position, value.Length);
+                editor.Focus();
+            }
+            else
+            {
+                MessageBox.Show("Text not found.");
+            }
+        };
+        findForm.Controls.Add(search);
+        findForm.Controls.Add(findButton);
+        findForm.AcceptButton = findButton;
+        findForm.Show(this);
+    }
+
+    // ========== MAIN ==========
+
+    [STAThread]
+    static void Main()
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.Run(new MainForm());
+    }
+}

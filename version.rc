@@ -1,0 +1,32 @@
+#include <winver.h>
+
+1 VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS__WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041104B0"
+        BEGIN
+            VALUE "CompanyName", "Yuta Software"
+            VALUE "FileDescription", "VBEditor"
+            VALUE "FileVersion", "1.0.0.0"
+            VALUE "InternalName", "VBEditor"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Yuta"
+            VALUE "OriginalFilename", "VBEditor.exe"
+            VALUE "ProductName", "VBEditor"
+            VALUE "ProductVersion", "1.0.0.0"
+        END
+    END
+
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0411, 0x04B0
+    END
+END

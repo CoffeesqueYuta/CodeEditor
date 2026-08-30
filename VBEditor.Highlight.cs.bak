@@ -1,0 +1,229 @@
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+
+namespace VBEditor
+{
+    public partial class MainForm : Form
+    {
+        // ========== INITIAL FULL HIGHLIGHT ==========
+
+        private void HighlightEntireDocument()
+        {
+            if (editor.TextLength == 0) return;
+            HighlightLines(editor.Text, 0, TextUtils.CountLines(editor.Text) - 1);
+        }
+
+        // ========== HIGHLIGHT TIMER ==========
+
+        private void HighlightTimer_Tick(object sender, EventArgs e)
+        {
+            highlightTimer.Stop();
+            if (!highlighting) HighlightChangedRegion();
+        }
+
+        // ========== FIND CHANGED REGION ==========
+
+        private void HighlightChangedRegion()
+        {
+            string newText = editor.Text;
+            string oldText = previousText;
+            int prefix = 0;
+            int minimum = Math.Min(oldText.Length, newText.Length);
+            while (prefix < minimum && oldText[prefix] == newText[prefix]) { prefix++; }
+            int oldSuffix = oldText.Length - 1;
+            int newSuffix = newText.Length - 1;
+            while (oldSuffix >= prefix && newSuffix >= prefix && oldText[oldSuffix] == newText[newSuffix])
+            {
+                oldSuffix--;
+                newSuffix--;
+            }
+            int start = prefix;
+            int end = newSuffix + 1;
+            if (start > newText.Length) { start = newText.Length; }
+            if (end > newText.Length) { end = newText.Length; }
+            int startLine = TextUtils.GetLineAtPosition(newText, start);
+            int endLine = TextUtils.GetLineAtPosition(newText, end);
+            int oldStartLine = TextUtils.GetLineAtPosition(oldText, Math.Min(prefix, oldText.Length));
+            int oldEndLine = TextUtils.GetLineAtPosition(oldText, Math.Min(oldSuffix + 1, oldText.Length));
+            int firstLine = startLine;
+            int lastLine = endLine;
+            if (oldStartLine < firstLine) { firstLine = oldStartLine; }
+            if (oldEndLine > lastLine) { lastLine = oldEndLine; }
+            TextUtils.ExpandLogicalRange(newText, ref firstLine, ref lastLine);
+            if (newText.Length == 0) { previousText = newText; return;}
+            HighlightLines(newText, firstLine, lastLine);
+            previousText = newText;
+        }
+
+        // ========== HIGHLIGHT SELECTED LINES ==========
+
+        private void HighlightLines(string text, int firstLine, int lastLine)
+        {
+            int start = TextUtils.GetLineStart(text, firstLine);
+            int end = TextUtils.GetLineEnd(text, lastLine);
+            if (start < 0) start = 0;
+            if (end < start) return;
+            if (end > editor.TextLength) end = editor.TextLength;
+            int cursor = editor.SelectionStart;
+            int selectionLength = editor.SelectionLength;
+            highlighting = true;
+            try {
+                SendMessage(editor.Handle, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+                editor.SuspendLayout();
+                editor.Select(start, end - start);
+                editor.SelectionColor = NormalColor;
+                editor.SelectionBackColor = BackgroundColor;
+                HighlightRange(text, start, end);
+            }
+            finally 
+            {
+                if (cursor > editor.TextLength) { cursor = editor.TextLength; }
+                if (selectionLength > editor.TextLength - cursor) { selectionLength = editor.TextLength - cursor; }
+                editor.Select(cursor, selectionLength);
+                editor.ResumeLayout();
+                SendMessage(editor.Handle, WM_SETREDRAW, new IntPtr(1), IntPtr.Zero);
+                editor.Invalidate();
+                editor.Update();
+                highlighting = false;
+            }
+        }
+
+        private void ColorRange(int start, int length, Color color)
+        {
+            if (length <= 0) return;
+            if (start < 0) return;
+            if (start >= editor.TextLength) return;
+            if (start + length > editor.TextLength) { length = editor.TextLength - start; }
+            if (length <= 0) return;
+            editor.Select(start, length);
+            editor.SelectionColor = color;
+        }
+
+        // ========== HIGHLIGHT RANGE ==========
+
+        private void HighlightRange(string text, int start, int end)
+        {
+            int i = start;
+            while (i < end)
+            {
+                char c = text[i];
+
+                // COMMENT
+
+                if (c == '\'')
+                {
+                    int commentStart = i;
+                    while (i < end && text[i] != '\n') { i++; }
+                    ColorRange(commentStart, i - commentStart, CommentColor);
+                    continue;
+                }
+
+                // STRING
+
+                if (c == '"')
+                {
+                    int stringStart = i;
+                    i++;
+                    while (i < end)
+                    {
+                        if (text[i] == '"')
+                        {
+                            if (i + 1 < end && text[i + 1] == '"') { i += 2; continue; }
+                            i++; break;
+                        }
+                        i++;
+                    }
+                    ColorRange(stringStart, i - stringStart, StringColor);
+                    continue;
+                }
+
+                // IDENTIFIER / KEYWORD / TYPE
+
+                if (Char.IsLetter(c) || c == '_')
+                {
+                    int wordStart = i;
+                    i++;
+                    while (i < end && (Char.IsLetterOrDigit(text[i]) || text[i] == '_')) { i++; }
+                    string word = text.Substring(wordStart, i - wordStart);
+
+                    // BUILT-IN TYPE
+                    if (typeNames.Contains(word))
+                    {
+                        ColorRange(wordStart, i - wordStart, TypeNameColor);
+                    }
+
+                    // USER TYPE AFTER AS / NEW
+                    else if (IsTypeNameAfterAsOrNew(text, wordStart))
+                    {
+                        ColorRange(wordStart, i - wordStart, TypeNameColor);
+                    }
+
+                    // USER TYPE AFTER CLASS / STRUCTURE / INTERFACE / ENUM / DELEGATE
+                    else if (IsTypeNameAfterDeclarationKeyword(text, wordStart))
+                    {
+                        ColorRange(wordStart, i - wordStart, TypeNameColor);
+                    }
+
+                    // KEYWORD
+                    else if (keywords.Contains(word))
+                    {
+                        ColorRange(wordStart, i - wordStart, KeywordColor);
+                    }
+
+                    // NORMAL IDENTIFIER
+                    else
+                    {
+                        ColorRange(wordStart, i - wordStart, IdentifierColor);
+                    }
+                    continue;
+                }
+
+                // NUMBER
+
+                if (Char.IsDigit(c))
+                {
+                    i++;
+                    while (i < end && (Char.IsDigit(text[i]) || text[i] == '.' || Char.ToLower(text[i]) == 'e')) { i++; }
+                    continue;
+                }
+
+                // PARENTHESIS / BRACKETS
+
+                //if (c == '(' || c == ')' || c =='{' || c == '}' || c == '[' || c == ']')
+                if (c == '(' || c == ')' || c == '[' || c == ']')
+                {
+                    ColorRange(i, 1, ParenthesisColor);
+                    i++;
+                    continue;
+                }
+
+                // OPERATORS
+
+                if (IsOperator(c))
+                {
+                    int operatorStart = i;
+                    i++;
+                    if (i < end)
+                    {
+                        char next = text[i];
+                        if ((c == '<' && (next == '=' || next == '>')) ||
+                            (c == '>' && next == '=') ||
+                            (c == '+' && next == '=') ||
+                            (c == '-' && next == '=') ||
+                            (c == '*' && next == '=') ||
+                            (c == '/' && next == '=') ||
+                            (c == '&' && next == '=') ||
+                            (c == '^' && next == '='))
+                        {
+                            i++;
+                        }
+                    }
+                    ColorRange(operatorStart, i - operatorStart, OperatorColor);
+                    continue;
+                }
+                i++;
+            }
+        }
+    }
+}
