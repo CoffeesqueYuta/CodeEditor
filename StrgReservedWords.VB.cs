@@ -89,7 +89,7 @@ namespace VBEditor
 
         private readonly HashSet<string> typeDeclarationKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "Class", "Module", "Structure", "Interface", "Enum", "Delegate"
+            "Class", "Const", "Dim", "Delegate", "Enum", "Event", "Friend", "Function", "Get", "Implements", "Interface", "Let", "Module", "Private", "Public", "Structure", "Sub"
         };
 
         // ========== VB TYPE USAGE KEYWORDS ==========

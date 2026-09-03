@@ -169,7 +169,7 @@ namespace VBEditor
                 }
 
                 // IDENTIFIER / KEYWORD / TYPE
-
+                string original;
                 if (Char.IsLetter(c) || c == '_')
                 {
                     int wordStart = i;
@@ -187,11 +187,27 @@ namespace VBEditor
 
                     // USER TYPE AFTER CLASS / STRUCTURE / INTERFACE / ENUM / DELEGATE
                     else if (IsTypeNameAfterDeclarationKeyword(text, wordStart))
-                    { SetColor(wordStart, i - wordStart, HighlightColors.TypeNameColor, HighlightColors.BackgroundColor); }
+                    { 
+                        SetColor(wordStart, i - wordStart, HighlightColors.TypeNameColor, HighlightColors.BackgroundColor); 
+                        string lower = word.ToLower();
+                        if (!declaredIdentifiers.ContainsKey(lower))
+                        {
+                            declaredIdentifiers[lower] = word;
+                        }
+                    }
 
                     // KEYWORD
                     else if (syntaxHighlighter.IsKeyword(word))
                     { SetColor(wordStart, i - wordStart, HighlightColors.KeywordColor, HighlightColors.BackgroundColor); }
+
+                    else if (declaredIdentifiers.TryGetValue(word.ToLower(), out original))
+                    {
+                        int wordLength = i - wordStart;
+
+                        editor.Select(wordStart, wordLength);
+                        editor.SelectedText = original;
+                        editor.SelectionStart = wordStart + original.Length;
+                    }
 
                     // NORMAL IDENTIFIER
                     else
@@ -229,6 +245,24 @@ namespace VBEditor
                 }
                 i++;
             }
+        }
+
+        private string NextWord(string text, int index, int end)
+        {
+            int i = index;
+
+            // 空白を飛ばす
+            while (i < end && Char.IsWhiteSpace(text[i])) i++;
+
+            int start = i;
+
+            // 単語を読む
+            while (i < end && (Char.IsLetterOrDigit(text[i]) || text[i] == '_')) i++;
+
+            if (i > start)
+                return text.Substring(start, i - start);
+
+            return null;
         }
         
         private bool TryReadComment(string text, int index, int endIndex, out int length)

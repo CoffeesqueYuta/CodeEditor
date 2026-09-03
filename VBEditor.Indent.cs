@@ -48,7 +48,7 @@ namespace VBEditor
             string replacement = "";
             for (line = 0; line < lines.Count; line++)
             {
-                replacement += "\t" + lines[line];
+                replacement += "    " + lines[line];
                 if (line < lines.Count - 1) { replacement += Environment.NewLine; }
             }
             editor.Select(blockStart, blockEnd - blockStart);
@@ -101,14 +101,14 @@ namespace VBEditor
             string replacement = "";
             for (line = 0; line < lines.Count; line++)
             {
-                replacement += "\t" + lines[line];
+                replacement += "    " + lines[line];
                 if (line < lines.Count - 1) { replacement += Environment.NewLine; }
             }
             editor.Select(blockStart, blockEnd - blockStart);
             editor.SelectedText = replacement;
             int lineCount = lastLine - firstLine + 1;
-            int newSelectionStart = selectionStart + 1;
-            int newSelectionLength = selectionLength + lineCount;
+            int newSelectionStart = selectionStart + 4;
+            int newSelectionLength = selectionLength + lineCount * 4;
             if (newSelectionLength > editor.TextLength) { newSelectionStart = editor.TextLength; }
             if (newSelectionStart + newSelectionLength > editor.TextLength) { newSelectionLength = editor.TextLength - newSelectionStart; }
             editor.Select(newSelectionStart, newSelectionLength);
@@ -138,7 +138,7 @@ namespace VBEditor
         private int GetIndentCharacters(string line)
         {
             if (String.IsNullOrEmpty(line)) return 0;
-            if (line[0] == '\t') return 1;
+            if (line.StartsWith("    ")) return 4;
             int spaces = 0;
             while (spaces < line.Length && spaces < 4 && line[spaces] == ' ') { spaces++; }
             return spaces;
