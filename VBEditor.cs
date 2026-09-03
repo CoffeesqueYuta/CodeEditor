@@ -37,6 +37,8 @@ namespace VBEditor
 
         private const int WM_SETREDRAW = 0x000B;
 
+        private Dictionary<string, string> declaredIdentifiers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         [DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         
@@ -299,6 +301,8 @@ namespace VBEditor
             // TAB
             if (e.KeyCode == Keys.Tab)
             {
+                e.SuppressKeyPress = true;
+                e.Handled = true;
                 if (editor.SelectionLength > 0)
                 {
                     if (e.Shift)
@@ -309,13 +313,54 @@ namespace VBEditor
                     {
                         IndentSelectedLines();
                     }
-                    e.SuppressKeyPress = true;
-                    e.Handled = true;
                     return;
                 }
                 if (e.Shift)
                 {
-                    UnindentSelectedLines();
+                    UnindentSelectedLines();   
+                    return;
+                }
+                int pos = editor.SelectionStart;
+                editor.Select(pos, 0);
+                editor.SelectedText = "    ";
+                editor.SelectionStart = pos + 4;
+                return;
+            }
+
+            // AUTO PAIRING (parenthesis & quotes)
+            if (!e.Control && !e.Alt)
+            {
+                char open = '\0';
+                char close = '\0';
+
+                switch (e.KeyCode)
+                {
+                    case Keys.D9:      // (
+                        if (e.Shift) { open = '('; close = ')'; }
+                        break;
+                    case Keys.OemOpenBrackets:   // [
+                        open = '['; close = ']';
+                        break;
+                    case Keys.Oem6:    // ]
+                        break;
+                    case Keys.Oem7:    // ' または "
+                        if (!e.Shift) { open = '\''; close = '\''; }
+                        else { open = '"'; close = '"'; }
+                        break;
+                    case Keys.Oemcomma: // <
+                        if (e.Shift) { open = '<'; close = '>'; }
+                        break;
+                    case Keys.OemPeriod: // >
+                        break;
+                    case Keys.Oem5: // {
+                        if (e.Shift) { open = '{'; close = '}'; }
+                        break;
+                }
+                if (open != '\0')
+                {
+                    int pos = editor.SelectionStart;
+                    editor.SelectedText = open.ToString() + close.ToString();
+                    editor.SelectionStart = pos + 1; 
                     e.SuppressKeyPress = true;
                     e.Handled = true;
                     return;
