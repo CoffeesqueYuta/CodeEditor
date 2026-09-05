@@ -253,8 +253,7 @@ namespace VBEditor
         {
             // CTRL + S
             if (e.Control && e.KeyCode == Keys.S)
-            {
-                
+            {  
                 if (currentFile == null) { SaveFileAs(); }
                 else { SaveFile(); }
                 e.SuppressKeyPress = true;
@@ -298,6 +297,33 @@ namespace VBEditor
                 return;
             }
 
+            // BACKSPACE
+            if (e.KeyCode == Keys.Back)
+            {
+                if (editor.SelectionLength != 0) return;
+                int cursor = editor.SelectionStart;
+                string text = editor.Text;
+                int line = TextUtils.GetLineAtPosition(text, cursor);
+                int lineStart = TextUtils.GetLineStart(text, line);
+                string left = text.Substring(lineStart, cursor - lineStart);
+                if (TextUtils.IsAllSpaces(left))
+                {
+                    UnindentCurrentLine();
+                    e.SuppressKeyPress = true;
+                    e.Handled = true;
+                    return;
+                } 
+            }
+
+            // SHIFT + TAB
+            if (e.Shift && e.KeyCode == Keys.Tab)
+            {
+                UnindentSelectedLines();
+                e.SuppressKeyPress = true;
+                e.Handled = true;
+                return;
+            }
+
             // TAB
             if (e.KeyCode == Keys.Tab)
             {
@@ -305,19 +331,7 @@ namespace VBEditor
                 e.Handled = true;
                 if (editor.SelectionLength > 0)
                 {
-                    if (e.Shift)
-                    {
-                        UnindentSelectedLines();
-                    }
-                    else
-                    {
-                        IndentSelectedLines();
-                    }
-                    return;
-                }
-                if (e.Shift)
-                {
-                    UnindentSelectedLines();   
+                    IndentSelectedLines();
                     return;
                 }
                 int pos = editor.SelectionStart;
