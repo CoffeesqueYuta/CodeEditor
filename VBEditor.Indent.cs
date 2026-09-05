@@ -13,52 +13,37 @@ namespace VBEditor
         {
             int selectionStart = editor.SelectionStart;
             int selectionLength = editor.SelectionLength;
-
             string text = editor.Text;
             int firstLine = TextUtils.GetLineAtPosition(text, selectionStart);
             int lastPosition = selectionStart + selectionLength;
-            int lastLine;
-
-            if (lastPosition > 0 && lastPosition <= text.Length && lastPosition == text.Length)
-            {
-                lastLine = TextUtils.GetLineAtPosition(text, text.Length - 1);
-            }
-            else
-            {
-                lastLine = TextUtils.GetLineAtPosition(text, lastPosition);
-                if (lastLine > 0 && lastPosition < text.Length && text[lastPosition - 1] != '\n') { lastLine--; }
-            }
+            int lastLine = TextUtils.GetLineAtPosition(text, lastPosition);
             if (lastLine < firstLine) { lastLine = firstLine; }
             int blockStart = TextUtils.GetLineStart(text, firstLine);
-            int blockEnd;
-            if (lastLine < TextUtils.CountLines(text) - 1)
-            {
-                blockEnd = TextUtils.GetLineStart(text, lastLine + 1);
-            }
-            else
-            {
-                blockEnd = text.Length;
-            }
+            int blockEnd = TextUtils.GetLineStart(text, lastLine) + TextUtils.GetLine(text, lastLine).Length;
             List<string> lines = new List<string>();
-            int line;
-            for (line = firstLine; line <= lastLine; line++)
-            {
+            for (int line = firstLine; line <= lastLine; line++)
                 lines.Add(TextUtils.GetLine(text, line));
-            }
+
             string replacement = "";
-            for (line = 0; line < lines.Count; line++)
+            int totalAdded = 0;
+            int firstLineAdded = 0;
+
+            for (int i = 0; i < lines.Count; i++)
             {
-                replacement += "    " + lines[line];
-                if (line < lines.Count - 1) { replacement += Environment.NewLine; }
+                string line = lines[i];
+                int add = GetIndentCharacters(line);
+                if (i == 0) { firstLineAdded = add; }
+                if (add > 0) { line = new string(' ', add) + line; }
+                totalAdded += add;
+                replacement += line;
+                if (i < lines.Count - 1) { replacement += Environment.NewLine; }
             }
             editor.Select(blockStart, blockEnd - blockStart);
             editor.SelectedText = replacement;
-            int lineCont = lastLine - firstLine + 1;
-            int newSelectionStart = selectionStart + 1;
-            int newSelectionLength = selectionLength + lineCont;
-            if (newSelectionStart > editor.TextLength) { newSelectionStart = editor.TextLength; }
-            if (newSelectionStart + newSelectionLength > editor.TextLength) { newSelectionLength = editor.TextLength - newSelectionStart; }
-            editor.Select(newSelectionStart, newSelectionLength);
+            int newStart = blockStart + (selectionStart - blockStart + firstLineAdded);
+            int newEnd = blockStart + (blockEnd - blockStart + totalAdded);
+            int newLength = Math.Max(newEnd - newStart, 0);
+            editor.Select(newStart, newLength);
         }
 
         // ========== UNINDENT SELECTED LINES ==========
@@ -67,51 +52,40 @@ namespace VBEditor
         {
             int selectionStart = editor.SelectionStart;
             int selectionLength = editor.SelectionLength;
-
             string text = editor.Text;
             int firstLine = TextUtils.GetLineAtPosition(text, selectionStart);
             int lastPosition = selectionStart + selectionLength;
-            int lastLine;
-            if (lastPosition > 0 && lastPosition == text.Length)
-            {
-                lastLine = TextUtils.GetLineAtPosition(text, text.Length - 1);
-            }
-            else
-            {
-                lastLine = TextUtils.GetLineAtPosition(text, lastPosition);
-                if (lastLine > 0 && lastPosition < text.Length && text[lastPosition - 1] != '\n') { lastLine--; }
-            }
+            int lastLine = TextUtils.GetLineAtPosition(text, lastPosition);
             if (lastLine < firstLine) { lastLine = firstLine; }
             int blockStart = TextUtils.GetLineStart(text, firstLine);
-            int blockEnd;
-            if (lastLine < TextUtils.CountLines(text) - 1)
-            {
-                blockEnd = TextUtils.GetLineStart(text, lastLine + 1);
-            }
-            else
-            {
-                blockEnd = text.Length;
-            }
+            int oldEnd = TextUtils.GetLineStart(text, lastLine) + TextUtils.GetLine(text, lastLine).Length;
+            int blockEnd = oldEnd;
             List<string> lines = new List<string>();
-            int line;
-            for (line = firstLine; line <= lastLine; line++)
-            {
+            for (int line = firstLine; line <= lastLine; line++)
                 lines.Add(TextUtils.GetLine(text, line));
-            }
+
             string replacement = "";
-            for (line = 0; line < lines.Count; line++)
+            int totalRemoved = 0;
+            int firstLineRemoved = 0;
+
+            for (int i = 0; i < lines.Count; i++)
             {
-                replacement += "    " + lines[line];
-                if (line < lines.Count - 1) { replacement += Environment.NewLine; }
+                string line = lines[i];
+                int remove = GetUnindentCharacters(line);
+                if (i == 0) { firstLineRemoved = remove; }
+                if (remove > 0) { line = line.Substring(remove);}
+                totalRemoved += remove;
+                replacement += line;
+                if (i < lines.Count - 1) { replacement += Environment.NewLine; }
             }
             editor.Select(blockStart, blockEnd - blockStart);
             editor.SelectedText = replacement;
-            int lineCount = lastLine - firstLine + 1;
-            int newSelectionStart = selectionStart + 4;
-            int newSelectionLength = selectionLength + lineCount * 4;
-            if (newSelectionLength > editor.TextLength) { newSelectionStart = editor.TextLength; }
-            if (newSelectionStart + newSelectionLength > editor.TextLength) { newSelectionLength = editor.TextLength - newSelectionStart; }
-            editor.Select(newSelectionStart, newSelectionLength);
+            int newStart = blockStart + (selectionStart - blockStart - firstLineRemoved);
+            if (newStart < blockStart) {newStart = blockStart; }
+            int newEnd = oldEnd - totalRemoved;
+            if (newEnd > blockEnd) { newEnd = blockEnd; }
+            int newLength = Math.Max(newEnd - newStart, 0);
+            editor.Select(newStart, newLength);
         }
 
         // ========== UNINDENT CURRENT LINE ==========
@@ -124,11 +98,11 @@ namespace VBEditor
             int lineStart = TextUtils.GetLineStart(text, line);
             int lineEnd = TextUtils.GetLineEnd(text, line);
             string currentLine = text.Substring(lineStart, lineEnd - lineStart);
-            int removeCount = GetIndentCharacters(currentLine);
+            int removeCount = GetUnindentCharacters(currentLine);
             if (removeCount <= 0) return;
             editor.Select(lineStart, removeCount);
             editor.SelectedText = "";
-            int newCursor = cursor - Math.Min(removeCount, cursor - lineStart);
+            int newCursor = cursor - removeCount;
             if (newCursor < lineStart) { newCursor = lineStart; }
             editor.Select(newCursor, 0);
         }
@@ -138,10 +112,23 @@ namespace VBEditor
         private int GetIndentCharacters(string line)
         {
             if (String.IsNullOrEmpty(line)) return 0;
-            if (line.StartsWith("    ")) return 4;
             int spaces = 0;
-            while (spaces < line.Length && spaces < 4 && line[spaces] == ' ') { spaces++; }
-            return spaces;
+            while (spaces < line.Length && line[spaces] == ' ')
+                spaces++;
+            int mod = spaces % 4;
+            return mod == 0 ? 4 : (4 - mod);
+        }
+
+        private int GetUnindentCharacters(string line)
+        {
+            if (String.IsNullOrEmpty(line)) return 0;
+            int spaces = 0;
+            while (spaces < line.Length && line[spaces] == ' ')
+                spaces++;
+            if (spaces == 0)
+                return 0;
+            int mod = spaces % 4;
+            return mod == 0 ? 4 : mod;
         }
 
     }

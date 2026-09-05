@@ -147,5 +147,16 @@ namespace VBEditor
             if (currentLine == lineNumber) { return text.Substring(start).TrimEnd('\r'); }
             return "";
         }
+
+        // ========== CHECK IF STRING IS ALL SPACES ==========
+        // String.All() provided by System.Linq is unavailable the preinstalled environment only, so we implement this manually.
+        public static bool IsAllSpaces(string s)
+        {
+            for (int i = 0; i < s.Length; i++)
+                if (s[i] != ' ')
+                    return false;
+            return true;
+        }
+
     }
 }

@@ -58,7 +58,7 @@ namespace VBEditor
             "ParamArray", "Partial", "Private", "Property", "Protected", "Public",
             "RaiseEvent", "ReadOnly", "ReDim", "REM", "RemoveHandler", "Resume", "Return",
             "Select", "Set", "Shadows", "Shared", "Static", "Step", "Stop", "Sub", "SyncLock",
-            "Then", "Throw", "To", "True", "Try", "TryCast", "TypeOf", 
+            "Then", "Throw", "To", "True", "Try", "TryCast", "Type", "TypeOf", 
             "Using", 
             "While", "With", "WithEvents", "WriteOnly",
             "Xor",
@@ -89,7 +89,8 @@ namespace VBEditor
 
         private readonly HashSet<string> typeDeclarationKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "Class", "Const", "Dim", "Delegate", "Enum", "Event", "Friend", "Function", "Get", "Implements", "Interface", "Let", "Module", "Private", "Public", "Structure", "Sub"
+            "Class", "Const", "Dim", "Delegate", "Enum", "Event", "Friend", "Function", "Get", 
+            "Implements", "Interface", "Let", "Module", "Private", "Public", "Structure", "Sub", "Type"
         };
 
         // ========== VB TYPE USAGE KEYWORDS ==========

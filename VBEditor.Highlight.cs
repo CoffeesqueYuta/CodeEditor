@@ -181,6 +181,10 @@ namespace VBEditor
                     if (syntaxHighlighter.IsBuiltInType(word))
                     { SetColor(wordStart, i - wordStart, HighlightColors.TypeNameColor, HighlightColors.BackgroundColor); }
 
+                    // KEYWORD
+                    else if (syntaxHighlighter.IsKeyword(word))
+                    { SetColor(wordStart, i - wordStart, HighlightColors.KeywordColor, HighlightColors.BackgroundColor); }
+
                     // USER TYPE AFTER AS / NEW
                     else if (IsTypeNameAfterKeyword(text, wordStart))
                     { SetColor(wordStart, i - wordStart, HighlightColors.TypeNameColor, HighlightColors.BackgroundColor); }
@@ -188,17 +192,13 @@ namespace VBEditor
                     // USER TYPE AFTER CLASS / STRUCTURE / INTERFACE / ENUM / DELEGATE
                     else if (IsTypeNameAfterDeclarationKeyword(text, wordStart))
                     { 
-                        SetColor(wordStart, i - wordStart, HighlightColors.TypeNameColor, HighlightColors.BackgroundColor); 
+                        SetColor(wordStart, i - wordStart, HighlightColors.IdentifierColor, HighlightColors.BackgroundColor); 
                         string lower = word.ToLower();
                         if (!declaredIdentifiers.ContainsKey(lower))
                         {
                             declaredIdentifiers[lower] = word;
                         }
                     }
-
-                    // KEYWORD
-                    else if (syntaxHighlighter.IsKeyword(word))
-                    { SetColor(wordStart, i - wordStart, HighlightColors.KeywordColor, HighlightColors.BackgroundColor); }
 
                     else if (declaredIdentifiers.TryGetValue(word.ToLower(), out original))
                     {
@@ -207,6 +207,7 @@ namespace VBEditor
                         editor.Select(wordStart, wordLength);
                         editor.SelectedText = original;
                         editor.SelectionStart = wordStart + original.Length;
+                        SetColor(wordStart, i - wordStart, HighlightColors.IdentifierColor, HighlightColors.BackgroundColor);
                     }
 
                     // NORMAL IDENTIFIER
