@@ -37,14 +37,15 @@ namespace VBEditor
 
         private IntfSyntaxHighlighter syntaxHighlighter = new VbSyntaxHighlighter();
         private Dictionary<IntfSyntaxHighlighter, ToolStripMenuItem> languageMenuMap;
+        private Dictionary<string, string> declaredIdentifiers = new Dictionary<string, string>();
 
         private const int WM_SETREDRAW = 0x000B;
 
-        private Dictionary<string, string> declaredIdentifiers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
         [DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-        
+
+        [DllImport("user32.dll")]
+        static extern IntPtr GetKeyboardLayout(uint idThread);
 
         // ========== CONSTRUCTOR ==========
 
@@ -365,37 +366,107 @@ namespace VBEditor
 
                 switch (e.KeyCode)
                 {
-                    case Keys.D9:      // (
-                        if (e.Shift) { open = '('; close = ')'; }
+                    case Keys.D9:      
+                        if (IsUSKeyboard() && e.Shift) { open = '('; close = ')'; } // (
+                        if (IsJapaneseKeyboard() && e.Shift) // )
+                        { if (SkipClosingCharacter(e, ')')) return; }
                         break;
-                    case Keys.OemOpenBrackets:   // [
-                        open = '['; close = ']';
+                    case Keys.D0:      // )
+                        if (IsUSKeyboard() && e.Shift) 
+                        { if (SkipClosingCharacter(e, ')')) return; }
                         break;
-                    case Keys.Oem6:    // ]
+                    case Keys.D8:      // (
+                        if (IsJapaneseKeyboard() && e.Shift) { open = '('; close = ')'; }
+                        break;
+                    case Keys.OemOpenBrackets:   
+                        if (e.Shift) 
+                        { open = '{'; close = '}'; } // {
+                        else
+                        { open = '['; close = ']'; } // [
+                        break;
+                    case Keys.Oem5: // {
+                        if (IsUSKeyboard() && e.Shift) { open = '{'; close = '}'; }
+                        break;
+                    case Keys.Oem6:   
+                        if (e.Shift)
+                        { if (SkipClosingCharacter(e, '}')) return; }
+                        else
+                        { if (SkipClosingCharacter(e, ']')) return; }
+                        break;
+                    case Keys.Oem3:    // `
+                        if (IsUSKeyboard() && !e.Shift) { open = '`'; close = '`'; }
+                        if (IsJapaneseKeyboard() && e.Shift) 
+                        { 
+                            if (SkipClosingCharacter(e, '`')) return;
+                            open = '`'; close = '`';
+                        } 
                         break;
                     case Keys.Oem7:    // ' or "
-                        if (!e.Shift) { open = '\''; close = '\''; }
-                        else { open = '"'; close = '"'; }
+                        if (IsUSKeyboard())
+                        {
+                            if (!e.Shift) { open = '\''; close = '\''; }
+                            else { open = '"'; close = '"'; }
+                        }
+                        break;
+                    case Keys.D2:
+                        if (IsJapaneseKeyboard() && e.Shift) 
+                        { 
+                            if (SkipClosingCharacter(e, '"')) return;
+                            open = '"'; close = '"'; 
+                        }
+                        break;
+                    case Keys.D7:
+                        if (IsJapaneseKeyboard() && e.Shift) 
+                        { 
+                            if (syntaxHighlighter is VbSyntaxHighlighter) return;
+                            if (SkipClosingCharacter(e, '\'')) return;
+                            open = '\''; close = '\''; 
+                        }
                         break;
                     case Keys.Oemcomma: // <
                         if (e.Shift) { open = '<'; close = '>'; }
                         break;
                     case Keys.OemPeriod: // >
-                        break;
-                    case Keys.Oem5: // {
-                        if (e.Shift) { open = '{'; close = '}'; }
+                        if (e.Shift)
+                        { if (SkipClosingCharacter(e, '>')) return; }
                         break;
                 }
                 if (open != '\0')
                 {
-                    int pos = editor.SelectionStart;
                     editor.SelectedText = open.ToString() + close.ToString();
-                    editor.SelectionStart = pos + 1; 
+                    editor.SelectionStart -= 1;
                     e.SuppressKeyPress = true;
                     e.Handled = true;
                     return;
                 }
             }
+        }
+
+        bool IsJapaneseKeyboard()
+        {
+            IntPtr layout = GetKeyboardLayout(0);
+            int langId = (int)layout & 0xFFFF;
+            return langId == 0x0411; // Japanese (Japan)
+        }
+
+        bool IsUSKeyboard()
+        {
+            IntPtr layout = GetKeyboardLayout(0);
+            int langId = (int)layout & 0xFFFF;
+            return langId == 0x0409; // English (US)
+        }
+
+        private bool SkipClosingCharacter(KeyEventArgs e,char closing)
+        {
+            char? next = TextUtils.GetNextChar(editor.Text, editor.SelectionStart);
+            if (next == closing)
+            {
+                e.SuppressKeyPress = true;
+                e.Handled = true;
+                editor.SelectionStart += 1;
+                return true;
+            }
+            return false;
         }
 
         // ========== TEXT CHANGED ==========

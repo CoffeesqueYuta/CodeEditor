@@ -158,5 +158,10 @@ namespace VBEditor
             return true;
         }
 
+        public static char? GetNextChar(string text, int position)
+        {
+            if (position >= text.Length) return null;
+            return text[position];
+        }
     }
 }
