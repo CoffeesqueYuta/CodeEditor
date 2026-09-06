@@ -5,6 +5,25 @@ namespace VBEditor
 {
     public class CsSyntaxHighlighter : IntfSyntaxHighlighter
     {
+        // ========== C# FILE EXTENSIONS ==========
+
+        public bool IsFileExtension(string extension)
+        {
+            return fileExtensions.ContainsValue(extension);
+        }
+
+        public Dictionary<string, string> FileExtensions
+        {
+            get { return fileExtensions; }
+        }
+
+        private readonly Dictionary<string, string> fileExtensions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { ".cs", "C# Files (*.cs)|*.cs" },
+            { ".csproj", "C# Project Files (*.csproj)|*.csproj" },
+            { ".sln", "Solution Files (*.sln)|*.sln" }
+        };
+        
         // ========== C# COMMENTS ==========
 
         public bool IsLineCommentPrefix(string word)

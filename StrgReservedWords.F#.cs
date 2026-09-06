@@ -5,6 +5,25 @@ namespace VBEditor
 {
     public class FsSyntaxHighlighter : IntfSyntaxHighlighter
     {
+        // ========== F# FILE EXTENSIONS ==========
+
+        public bool IsFileExtension(string extension)
+        {
+            return fileExtensions.ContainsValue(extension);
+        }
+
+        public Dictionary<string, string> FileExtensions
+        {
+            get { return fileExtensions; }
+        }
+
+        private readonly Dictionary<string, string> fileExtensions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { ".fs", "F# Files (*.fs)|*.fs" },
+            { ".fsi", "F# Signature Files (*.fsi)|*.fsi" },
+            { ".fsx", "F# Script Files (*.fsx)|*.fsx" }
+        };
+        
         // ========== F# COMMENTS ==========
 
         public bool IsLineCommentPrefix(string word)

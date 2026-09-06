@@ -117,7 +117,6 @@ namespace VBEditor
                     end,
                     (s, l, fore, back) => SetColor(s, l, fore, back)
                 );
-
             }
             finally 
             {
@@ -251,25 +250,16 @@ namespace VBEditor
         private string NextWord(string text, int index, int end)
         {
             int i = index;
-
-            // 空白を飛ばす
             while (i < end && Char.IsWhiteSpace(text[i])) i++;
-
             int start = i;
-
-            // 単語を読む
             while (i < end && (Char.IsLetterOrDigit(text[i]) || text[i] == '_')) i++;
-
-            if (i > start)
-                return text.Substring(start, i - start);
-
+            if (i > start) { return text.Substring(start, i - start); }
             return null;
         }
         
         private bool TryReadComment(string text, int index, int endIndex, out int length)
         {
             length = 0;
-            // LINE COMMENT
             for (int prefixLen = 1; prefixLen <= 4; prefixLen++)
             {
                 if (index + prefixLen > endIndex)
@@ -381,5 +371,24 @@ namespace VBEditor
 
             SendMessage(editor.Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, ref cf);
         }
+/*
+        private void SetFont(int start, int length)
+        {
+            int cursor = editor.SelectionStart;
+            editor.SelectAll();
+            editor.SelectionFont = new Font("Consolas", editor.Font.Size);
+            editor.Select(cursor, 0);
+        }
+*/
+        private void SetFont(int start, int length)
+        {
+            if (length <= 0) return;
+
+            editor.Select(start, length);
+            editor.SelectionFont = new Font("Consolas", editor.Font.Size);
+
+            editor.Select(start + length, 0);
+        }
+
     }
 }

@@ -1,10 +1,13 @@
 using System;
 using System.Drawing;
+using System.Collections.Generic;
 
 namespace VBEditor
 {
     public interface IntfSyntaxHighlighter
     {
+        bool IsFileExtension(string extension);
+        Dictionary<string, string> FileExtensions { get; }
         bool IsLineCommentPrefix(string word);
         bool IsBlockCommentPrefix(string word);
         bool IsBlockCommentSuffix(string word);

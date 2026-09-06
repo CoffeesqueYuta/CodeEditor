@@ -5,6 +5,25 @@ namespace VBEditor
 {
     public class CppSyntaxHighlighter : IntfSyntaxHighlighter
     {
+        // ========== C++ FILE EXTENSIONS ==========
+
+        public bool IsFileExtension(string extension)
+        {
+            return fileExtensions.ContainsValue(extension);
+        }
+
+        public Dictionary<string, string> FileExtensions
+        {
+            get { return fileExtensions; }
+        }
+
+        private readonly Dictionary<string, string> fileExtensions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { ".cpp", "C++ Files (*.cpp)|*.cpp" },
+            { ".hpp", "C++ Header Files (*.hpp)|*.hpp" },
+            { ".h", "C Header Files (*.h)|*.h" }
+        };
+        
         // ========== C++ COMMENTS ==========
 
         public bool IsLineCommentPrefix(string word)

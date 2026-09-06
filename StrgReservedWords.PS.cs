@@ -5,6 +5,25 @@ namespace VBEditor
 {
     public class PsSyntaxHighlighter : IntfSyntaxHighlighter
     {
+        // ========== POWERSHELL FILE EXTENSIONS ==========
+
+        public bool IsFileExtension(string extension)
+        {
+            return fileExtensions.ContainsValue(extension);
+        }
+
+        public Dictionary<string, string> FileExtensions
+        {
+            get { return fileExtensions; }
+        }
+
+        private readonly Dictionary<string, string> fileExtensions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { ".ps1", "PowerShell Scripts (*.ps1)|*.ps1" },
+            { ".psm1", "PowerShell Modules (*.psm1)|*.psm1" },
+            { ".psd1", "PowerShell Data Files (*.psd1)|*.psd1" }
+        };
+        
         // ========== POWERSHELL COMMENTS ==========
 
         public bool IsLineCommentPrefix(string word)

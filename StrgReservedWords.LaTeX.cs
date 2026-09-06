@@ -5,6 +5,25 @@ namespace VBEditor
 {
     public class LatexSyntaxHighlighter : IntfSyntaxHighlighter
     {
+        // ========== LaTeX FILE EXTENSIONS ==========
+
+        public bool IsFileExtension(string extension)
+        {
+            return fileExtensions.ContainsValue(extension);
+        }
+
+        public Dictionary<string, string> FileExtensions
+        {
+            get { return fileExtensions; }
+        }
+
+        private readonly Dictionary<string, string> fileExtensions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { ".tex", "LaTeX Files (*.tex)|*.tex" },
+            { ".sty", "LaTeX Style Files (*.sty)|*.sty" }, 
+            { ".cls", "LaTeX Class Files (*.cls)|*.cls" }
+        };
+        
         // ========== LaTeX COMMENTS ==========
 
         public bool IsLineCommentPrefix(string word)

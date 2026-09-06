@@ -5,6 +5,34 @@ namespace VBEditor
 {
     public class JsSyntaxHighlighter : IntfSyntaxHighlighter
     {
+        // ========== JS FILE EXTENSIONS ==========
+
+        public bool IsFileExtension(string extension)
+        {
+            return fileExtensions.ContainsValue(extension);
+        }
+
+        public Dictionary<string, string> FileExtensions
+        {
+            get { return fileExtensions; }
+        }
+
+        private readonly Dictionary<string, string> fileExtensions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { ".js", "JavaScript Files (*.js)|*.js" },
+            { ".mjs", "JavaScript Module Files (*.mjs)|*.mjs" },
+            { ".cjs", "JavaScript CommonJS Files (*.cjs)|*.cjs" }, 
+            { ".jsx", "JavaScript React Files (*.jsx)|*.jsx" },
+            {".json", "JSON Files (*.json)|*.json" },
+            { ".jsonc", "JSON with Comments Files (*.jsonc)|*.jsonc" },
+            { ".json5", "JSON5 Files (*.json5)|*.json5" },
+            { ".d.ts", "TypeScript Declaration Files (*.d.ts)|*.d.ts" },
+            { ".d.mts", "TypeScript Declaration Module Files (*.d.mts)|*.d.mts" },
+            { ".d.cts", "TypeScript Declaration CommonJS Files (*.d.cts)|*.d.cts" },
+            { ".ts", "TypeScript Files (*.ts)|*.ts" },
+            { ".tsx", "TypeScript React Files (*.tsx)|*.tsx" }
+        };
+        
         // ========== JS COMMENTS ==========
 
         public bool IsLineCommentPrefix(string word)
