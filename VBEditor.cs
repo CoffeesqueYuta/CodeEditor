@@ -35,6 +35,9 @@ namespace VBEditor
         private string previousText;
         private string currentFile = null;
 
+        private IntfSyntaxHighlighter syntaxHighlighter = new VbSyntaxHighlighter();
+        private Dictionary<IntfSyntaxHighlighter, ToolStripMenuItem> languageMenuMap;
+
         private const int WM_SETREDRAW = 0x000B;
 
         private Dictionary<string, string> declaredIdentifiers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -59,6 +62,10 @@ namespace VBEditor
             lineNumbers.Width = 55;
             lineNumbers.ReadOnly = true;
             lineNumbers.TabStop = false;
+            lineNumbers.HideSelection = true;
+            lineNumbers.SelectionLength = 0;
+            lineNumbers.SelectionStart = 0;
+            lineNumbers.Cursor = Cursors.Default;
             lineNumbers.WordWrap = false;
             lineNumbers.ScrollBars = RichTextBoxScrollBars.None;
             lineNumbers.Font = new Font("Consolas", 11);
@@ -93,6 +100,7 @@ namespace VBEditor
             editor.KeyDown += Editor_KeyDown;
             editor.ZoomInRequested += (s, e) => ZoomIn();
             editor.ZoomOutRequested += (s, e) => ZoomOut();
+            lineNumbers.Enter += (s, e) => editor.Focus();
             lineNumbers.ZoomInRequested += (s, e) => ZoomIn();
             lineNumbers.ZoomOutRequested += (s, e) => ZoomOut();
 
@@ -123,7 +131,7 @@ namespace VBEditor
                 string path = args[0];
                 if (File.Exists(path))
                 {
-                    LoadFile(path);   // ← あなたのファイル読み込み処理
+                    LoadFile(path);
                     currentFile = path;
                 }
             }
@@ -190,6 +198,7 @@ namespace VBEditor
             edit.DropDownItems.Add(find);
 
             ToolStripMenuItem view = new ToolStripMenuItem("View");
+
             ToolStripMenuItem langVB = new ToolStripMenuItem("VB");
             ToolStripMenuItem langJS = new ToolStripMenuItem("JavaScript");
             ToolStripMenuItem langPS = new ToolStripMenuItem("PowerShell");
@@ -199,22 +208,41 @@ namespace VBEditor
             ToolStripMenuItem langCPP = new ToolStripMenuItem("C++");
             ToolStripMenuItem langFSharp = new ToolStripMenuItem("F#");
             ToolStripMenuItem langCSS = new ToolStripMenuItem("CSS");
-            // ToolStripMenuItem langBash = new ToolStripMenuItem("Bash");
             ToolStripMenuItem langLatex = new ToolStripMenuItem("LaTeX");
-            // ToolStripMenuItem langC = new ToolStripMenuItem("C");
-            langVB.Click += delegate { SetHighlighter(new VbSyntaxHighlighter()); };
-            langJS.Click += delegate { SetHighlighter(new JsSyntaxHighlighter()); };
-            langPS.Click += delegate { SetHighlighter(new PsSyntaxHighlighter()); };
-            langCS.Click += delegate { SetHighlighter(new CsSyntaxHighlighter()); };
-            langPY.Click += delegate { SetHighlighter(new PySyntaxHighlighter()); };
-            langJAVA.Click += delegate { SetHighlighter(new JavaSyntaxHighlighter()); };
-            langCPP.Click += delegate { SetHighlighter(new CppSyntaxHighlighter()); };
-            langFSharp.Click += delegate { SetHighlighter(new FsSyntaxHighlighter()); };
-            langCSS.Click += delegate { SetHighlighter(new CssSyntaxHighlighter()); };
-            // langBash.Click += delegate { SetHighlighter(new BashSyntaxHighlighter()); };
-            langLatex.Click += delegate { SetHighlighter(new LatexSyntaxHighlighter()); };
-            // langC.Click += delegate { SetHighlighter(new CSyntaxHighlighter()); };
-
+            var vb = new VbSyntaxHighlighter();
+            var js = new JsSyntaxHighlighter();
+            var ps = new PsSyntaxHighlighter();
+            var cs = new CsSyntaxHighlighter();
+            var py = new PySyntaxHighlighter();
+            var java = new JavaSyntaxHighlighter();
+            var cpp = new CppSyntaxHighlighter();
+            var fs = new FsSyntaxHighlighter();
+            var css = new CssSyntaxHighlighter();
+            var latex = new LatexSyntaxHighlighter();
+            languageMenuMap = new Dictionary<IntfSyntaxHighlighter, ToolStripMenuItem>
+            {
+                { vb, langVB },
+                { js, langJS },
+                { ps, langPS },
+                { cs, langCS },
+                { py, langPY },
+                { java, langJAVA },
+                { cpp, langCPP },
+                { fs, langFSharp },
+                { css, langCSS },
+                { latex, langLatex }
+            };
+            langVB.Click += delegate { SetHighlighter(vb); };
+            langJS.Click += delegate { SetHighlighter(js); };
+            langPS.Click += delegate { SetHighlighter(ps); };
+            langCS.Click += delegate { SetHighlighter(cs); };
+            langPY.Click += delegate { SetHighlighter(py); };
+            langJAVA.Click += delegate { SetHighlighter(java); };
+            langCPP.Click += delegate { SetHighlighter(cpp); };
+            langFSharp.Click += delegate { SetHighlighter(fs); };
+            langCSS.Click += delegate { SetHighlighter(css); };
+            langLatex.Click += delegate { SetHighlighter(latex); };
+            languageMenuMap[vb].Checked = true;
             view.DropDownItems.Add(langVB);
             view.DropDownItems.Add(langJS);
             view.DropDownItems.Add(langPS);
@@ -224,9 +252,7 @@ namespace VBEditor
             view.DropDownItems.Add(langCPP);
             view.DropDownItems.Add(langFSharp);
             view.DropDownItems.Add(langCSS);
-            // view.DropDownItems.Add(langBash);
             view.DropDownItems.Add(langLatex);
-            // view.DropDownItems.Add(langC);
 
             menu.Items.Add(file);
             menu.Items.Add(edit);
@@ -235,17 +261,6 @@ namespace VBEditor
             menu.Dock = DockStyle.None;
             toolStripContainer.TopToolStripPanel.Controls.Add(menu);
         }
-
-        private void LoadFile(string path)
-        {
-            editor.Text = File.ReadAllText(path);
-            currentFile = path;
-            previousText = editor.Text;
-
-            UpdateLineNumbers();
-            HighlightEntireDocument();
-        }
-
 
         // ========== KEYWORD SHORTCUTS ==========
 
@@ -306,6 +321,7 @@ namespace VBEditor
                 int line = TextUtils.GetLineAtPosition(text, cursor);
                 int lineStart = TextUtils.GetLineStart(text, line);
                 string left = text.Substring(lineStart, cursor - lineStart);
+                if (left.Length == 0 && lineStart == cursor) { return; }
                 if (TextUtils.IsAllSpaces(left))
                 {
                     UnindentCurrentLine();
@@ -357,7 +373,7 @@ namespace VBEditor
                         break;
                     case Keys.Oem6:    // ]
                         break;
-                    case Keys.Oem7:    // ' または "
+                    case Keys.Oem7:    // ' or "
                         if (!e.Shift) { open = '\''; close = '\''; }
                         else { open = '"'; close = '"'; }
                         break;
@@ -406,11 +422,12 @@ namespace VBEditor
 
         // ========== SYNTAX HIGHLIGHTING ==========
 
-        private IntfSyntaxHighlighter syntaxHighlighter = new VbSyntaxHighlighter();
-
         private void SetHighlighter(IntfSyntaxHighlighter highlighter)
         {
             syntaxHighlighter = highlighter;
+            foreach (var kv in languageMenuMap)
+                kv.Value.Checked = false;
+            languageMenuMap[highlighter].Checked = true;
             HighlightEntireDocument();
         }
 

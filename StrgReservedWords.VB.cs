@@ -5,6 +5,25 @@ namespace VBEditor
 {
     public class VbSyntaxHighlighter : IntfSyntaxHighlighter
     {
+        // ========== VB FILE EXTENSIONS ==========
+
+        public bool IsFileExtension(string extension)
+        {
+            return fileExtensions.ContainsValue(extension);
+        }
+
+        public Dictionary<string, string> FileExtensions
+        {
+            get { return fileExtensions; }
+        }
+
+        private readonly Dictionary<string, string> fileExtensions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { ".vb", "VB Files (*.vb)|*.vb" },
+            { ".cls", "Class Files (*.cls)|*.cls" },
+            { ".bas", "Module Files (*.bas)|*.bas" }
+        };
+
         // ========== VB READ COMMENT ==========
 
         public bool IsLineCommentPrefix(string word)
@@ -27,8 +46,7 @@ namespace VBEditor
             return blockCommentPairs.ContainsValue(word);
         }
 
-        private readonly Dictionary<string, string> blockCommentPairs =
-            new Dictionary<string, string>
+        private readonly Dictionary<string, string> blockCommentPairs = new Dictionary<string, string>
         {
         };
 

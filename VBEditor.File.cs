@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
@@ -7,35 +8,53 @@ namespace VBEditor
 {
     public partial class MainForm : Form
     {
+        private Encoding currentEncoding = Encoding.UTF8;
+
         // ========== NEW FILE ==========
 
         private void NewFile()
         {
             editor.Clear();
+            currentEncoding = Encoding.UTF8;
             currentFile = null;
             previousText = "";
             Text = "VB Editor - New File";
+            SetFont(0, editor.TextLength);
             UpdateLineNumbers();
         }
 
-        // ========== OPEN FILE ==========
+        // ========== LOAD FILE AFTER DOUBLE CLICK ==========
+
+        private void LoadFile(string path)
+        {
+            string contents = ReadFileAutoEncoding(path);
+            editor.Text = contents;
+            currentFile = path;
+            previousText = editor.Text;
+            Text = "VB Editor - " + Path.GetFileName(currentFile);
+            SetFont(0, editor.TextLength);
+            UpdateLineNumbers();
+            HighlightEntireDocument();
+        }
+
+        // ========== OPEN FILE FROM MENU ==========
 
         private void OpenFile()
         {
             OpenFileDialog dialog = new OpenFileDialog();
-            dialog.Filter = "VB Files (*.vb)|*.vb|Class Files (*.cls)|*.cls|All Files (*.*)|*.*";
+            RefreshFileExtensions(dialog);
             if (dialog.ShowDialog() != DialogResult.OK) return;
             try
             {
-                string contents = File.ReadAllText(dialog.FileName);
+                string contents = ReadFileAutoEncoding(dialog.FileName);
                 highlighting = true;
                 editor.Text = contents;
                 highlighting = false;
                 currentFile = dialog.FileName;
-                //previousText = editor.contents;
                 previousText = editor.Text;
                 Text = "VB Editor - " + Path.GetFileName(currentFile);
                 editor.Select(0, 0);
+                SetFont(0, editor.TextLength);
                 UpdateLineNumbers();
                 HighlightEntireDocument();
             }
@@ -44,6 +63,16 @@ namespace VBEditor
                 highlighting = false;
                 MessageBox.Show(ex.Message, "Open Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        // ========== REFRESH FILE EXTENSIONS ==========
+
+        private void RefreshFileExtensions(FileDialog dialog)
+        {
+            string filters = "";
+            filters += string.Join("|", syntaxHighlighter.FileExtensions.Values);
+            filters += "|All Files (*.*)|*.*";
+            dialog.Filter = filters;
         }
 
         // ========== SAVE FILE ==========
@@ -57,7 +86,7 @@ namespace VBEditor
             }
             try
             {
-                File.WriteAllText(currentFile, editor.Text);
+                File.WriteAllText(currentFile, editor.Text, currentEncoding);
             }
             catch (Exception ex)
             {
@@ -70,12 +99,12 @@ namespace VBEditor
         private void SaveFileAs()
         {
             SaveFileDialog dialog = new SaveFileDialog();
-            dialog.Filter = "VB Files (*.vb)|*.vb|Class Files (*.cls)|*.cls|All Files (*.*)|*.*";
+            RefreshFileExtensions(dialog);
             dialog.DefaultExt = "vb";
             if (dialog.ShowDialog() != DialogResult.OK) return;
             try
             {
-                File.WriteAllText(dialog.FileName, editor.Text);
+                File.WriteAllText(dialog.FileName, editor.Text, currentEncoding);
                 currentFile = dialog.FileName;
                 Text = "VB Editor - " + Path.GetFileName(currentFile);
             }
@@ -85,5 +114,23 @@ namespace VBEditor
             }
         }
 
+        private string ReadFileAutoEncoding(string path)
+        {
+            byte[] bytes = File.ReadAllBytes(path);
+
+            // UTF-8 BOM
+            if (bytes.Length >= 3 &&
+                bytes[0] == 0xEF &&
+                bytes[1] == 0xBB &&
+                bytes[2] == 0xBF)
+            {
+                currentEncoding = Encoding.UTF8;
+                return Encoding.UTF8.GetString(bytes);
+            }
+
+            // No BOM → Assume Shift-JIS
+            currentEncoding = Encoding.GetEncoding(932);
+            return currentEncoding.GetString(bytes);
+        }
     }
 }

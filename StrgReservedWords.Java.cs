@@ -5,6 +5,25 @@ namespace VBEditor
 {
     public class JavaSyntaxHighlighter : IntfSyntaxHighlighter
     {
+        // ========== JAVA FILE EXTENSIONS ==========
+
+        public bool IsFileExtension(string extension)
+        {
+            return fileExtensions.ContainsValue(extension);
+        }
+
+        public Dictionary<string, string> FileExtensions
+        {
+            get { return fileExtensions; }
+        }
+
+        private readonly Dictionary<string, string> fileExtensions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { ".java", "Java Files (*.java)|*.java" },
+            { ".class", "Class Files (*.class)|*.class" },
+            { ".jar", "Java Archive Files (*.jar)|*.jar" }
+        };
+        
         // ========== JAVA COMMENTS ==========
 
         public bool IsLineCommentPrefix(string word)
